@@ -55,4 +55,4 @@ if __name__ == "__main__":
     
     from torchsummary import summary
     
-    print(summary(model, (3, 48, 48)))
+    summary(model, (3, 48, 48))

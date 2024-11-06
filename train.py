@@ -11,7 +11,7 @@ from datasets.data import DIV2K
 from baseline.SRCNN import SRCNN
 from metrics import PSNR, SSIM
 from args import get_args
-from utils import get_model
+from utils import build_model
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batchsize, shuffle=True)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batchsize, shuffle=True)
     
-    model = get_model(args.model)
+    model = build_model(args.model)
     model.to(args.device)
     
     criterion = nn.MSELoss()
