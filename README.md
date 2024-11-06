@@ -15,11 +15,12 @@ Valid_bicubic_x4: http://data.vision.ee.ethz.ch/cvl/DIV2K/DIV2K_valid_LR_bicubic
 
 ## Folder Structure
 ```
-├─Datasets─ DIV2K
-│           ├── DIV2K_train_HR
-│           ├── DIV2K_train_LR_bicubic
-│           │   └── X4
-│           ├── DIV2K_valid_HR
-│           └── DIV2K_valid_LR_bicubic
-│               └── X4
+datasets
+└── DIV2K
+    ├── DIV2K_train_HR
+    ├── DIV2K_train_LR_bicubic
+    │   └── X4
+    ├── DIV2K_valid_HR
+    └── DIV2K_valid_LR_bicubic
+        └── X4
 ```
