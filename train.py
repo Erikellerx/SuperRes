@@ -10,13 +10,15 @@ from torchvision import transforms
 from datasets.data import DIV2K
 from baseline.SRCNN import SRCNN
 from metrics import PSNR, SSIM
+from args import get_args
+from utils import get_model
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
 
-def train(model, loader, optimizer, criterion, devicem, epoch):
+def train(model, loader, optimizer, criterion, device, epoch):
     model.train()
     running_loss = 0.0
     for i, data in enumerate(tqdm(loader, desc="Training", leave=False)):
@@ -57,25 +59,31 @@ def validation(model, loader, criterion, device, epoch):
 
 if __name__ == "__main__":
     
-    data_dir = "F:\superRes\datasets\DIV2K"
+    args = get_args()
+    
+    #print args in a readable format
+    print("======> Arguments: <======")
+    for arg in vars(args):
+        print(f"{arg}:", getattr(args, arg))
+    print()
 
-    train_dataset = DIV2K(data_dir, train=True)
-    valid_dataset = DIV2K(data_dir, train=False)
+    train_dataset = DIV2K(args.data_dir, train=True)
+    valid_dataset = DIV2K(args.data_dir, train=False)
     
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True)
-    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=16, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batchsize, shuffle=True)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batchsize, shuffle=True)
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = SRCNN().to(device)
+    model = get_model(args.model)
+    model.to(args.device)
     
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
     
     best_psnr = 0
     
     for epoch in range(1, 100):
-        train(model, train_loader, optimizer, criterion, device, epoch)
-        _, psnr, ssim = validation(model, valid_loader, criterion, device, epoch)
+        train(model, train_loader, optimizer, criterion, args.device, epoch)
+        _, psnr, ssim = validation(model, valid_loader, criterion, args.device, epoch)
         
         if psnr > best_psnr:
             best_psnr = psnr
