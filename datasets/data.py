@@ -1,76 +1,106 @@
+import torch
+from torch.utils.data import Dataset
+import glob
 import os
-import torch  # Ensure torch is imported
-from datasets import load_dataset, DownloadConfig
-import datasets
-from torch.utils.data import DataLoader
-import torchvision.transforms as transforms
 from PIL import Image
-
-import matplotlib.pyplot as plt
+from torchvision.transforms import ToTensor
 import numpy as np
+import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader
+from torchvision import transforms
 
 
+class DIV2K(Dataset):
+	def __init__(self, data_dir,train = True, scale_factor=4, visualize=False):
+     
+		self.visualize = visualize
+		self.patch_size = 48
+		self.scale_factor = scale_factor
+     
+		# Get all paths of images inside `data_dir` into a list
+		self.lr_transform = transforms.Compose([
+			transforms.ToTensor()
+		])
+  
+		self.hr_transform = transforms.Compose([
+			transforms.ToTensor()
+		])
+  
+  
+		if train:
+			pattern = os.path.join(data_dir + f"{os.sep}DIV2k_train_HR{os.sep}", "*.png")
+			self.hr_file_paths = sorted(glob.glob(pattern, recursive=True))
+			pattern = os.path.join(data_dir + f"{os.sep}DIV2k_train_LR_bicubic{os.sep}", f"**{os.sep}*.png")
+			self.lr_file_paths = sorted(glob.glob(pattern, recursive=True))
+		else:
+			pattern = os.path.join(data_dir + f"{os.sep}DIV2k_valid_HR{os.sep}", "*.png")
+			self.hr_file_paths = sorted(glob.glob(pattern, recursive=True))
+			pattern = os.path.join(data_dir + f"{os.sep}DIV2k_valid_LR_bicubic{os.sep}", f"**{os.sep}*.png")
+			self.lr_file_paths = sorted(glob.glob(pattern, recursive=True))
 
 
-# Custom Dataset class to handle high and low resolution images
-class DIV2KDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, transform=None):
-        self.dataset = dataset
-        self.transform = transform
-    
-    def __len__(self):
-        return len(self.dataset)
-    
-    def __getitem__(self, idx):
-        item = self.dataset[idx]
-        lr_image = Image.open(item['lr'])  # Low-resolution image path
-        hr_image = Image.open(item['hr'])  # High-resolution image path
-        
-        if self.transform:
-            lr_image = self.transform(lr_image)
-            hr_image = self.transform(hr_image)
-        
-        return lr_image, hr_image
+		# Check if number of HR and LR images are same
+		assert len(self.hr_file_paths) == len(self.lr_file_paths), "Number of HR and LR images are not same"
 
 
+	def __len__(self):
+		return len(self.hr_file_paths)
+
+	def __getitem__(self, index):
+		# Read HR and LR images using PIL
+		hr_image = Image.open(self.hr_file_paths[index])
+		lr_image = Image.open(self.lr_file_paths[index])
+
+		# Apply transformation to images
+		hr_image = self.hr_transform(hr_image)
+		lr_image = self.lr_transform(lr_image)
+  
+		lr_random_x = np.random.randint(0, lr_image.shape[1] - self.patch_size)
+		lr_random_y = np.random.randint(0, lr_image.shape[2] - self.patch_size)
+  
+		hr_random_x = lr_random_x * self.scale_factor
+		hr_random_y = lr_random_y * self.scale_factor
+  
+		lr_image_patched = lr_image[:, lr_random_x:lr_random_x + self.patch_size, lr_random_y:lr_random_y + self.patch_size]
+		hr_image_patched = hr_image[:, hr_random_x:hr_random_x + self.patch_size * self.scale_factor, hr_random_y:hr_random_y + self.patch_size * self.scale_factor]
+  
+
+		if self.visualize:
+			return lr_image_patched, hr_image_patched, lr_image, hr_image
+		return lr_image_patched, hr_image_patched
+     
+     
+     
 if __name__ == "__main__":
-    
-    data_dir = "F:\superRes\datasets\div2k"
-    
-    
-
-    train_dataset = load_dataset("eugenesiow/Div2k", split="train", cache_dir = data_dir, trust_remote_code=True)
-    val_dataset = load_dataset("eugenesiow/Div2k", split="validation", cache_dir = data_dir, trust_remote_code=True)
-    
-    print(train_dataset.cache_files)
-    
-    print("Dataset Cach Location:", train_dataset.cache_files[0]['filename'])
-    
-    
-    transform = transforms.Compose([
-        transforms.ToTensor()        
-    ])
-    
-    div2k_train = DIV2KDataset(train_dataset, transform=transform)
-    div2k_val = DIV2KDataset(val_dataset, transform=transform)
-    
-    print("Number of training samples:", len(div2k_train))
-    print("Number of validation samples:", len(div2k_val))
-    
-    # Create DataLoader
-    train_dataloader = DataLoader(div2k_train, batch_size=8, shuffle=True)
-    
+	
+	data_dir = "F:\superRes\datasets\DIV2K"
+ 
+	# Create dataset object
+	train_dataset = DIV2K(data_dir, train=True, visualize=True)
 
 
-    for lr_images, hr_images in train_dataloader:
-        print("Low-resolution batch shape:", lr_images.shape)
-        print("High-resolution batch shape:", hr_images.shape)
-        
-        #visualize the images
-        
-        fig, ax = plt.subplots(2, 4, figsize=(20, 10))
-        for i in range(4):
-            ax[0, i].imshow(np.transpose(lr_images[i].numpy(), (1, 2, 0)))
-            ax[1, i].imshow(np.transpose(hr_images[i].numpy(), (1, 2, 0)))
-        
-        break
+	# Iterate over data loader
+	for lr_image_patched, hr_image_patched, lr_image, hr_image in train_dataset:
+		print(lr_image_patched.shape, hr_image_patched.shape, lr_image.shape, hr_image.shape)
+		
+		# Visualize images
+		plt.figure()
+		plt.subplot(1, 2, 1)
+		plt.imshow(lr_image_patched.permute(1, 2, 0))
+		plt.title("LR Image Patched")	
+		plt.subplot(1, 2, 2)	
+		plt.imshow(hr_image_patched.permute(1, 2, 0))	
+		plt.title("HR Image Patched")
+  
+	
+		plt.figure()
+		plt.subplot(1, 2, 1)
+		plt.imshow(lr_image.permute(1, 2, 0))
+		plt.title("LR Image")	
+		plt.subplot(1, 2, 2)
+		plt.imshow(hr_image.permute(1, 2, 0))
+		plt.title("HR Image")
+		plt.show()
+		break
+	
+	
