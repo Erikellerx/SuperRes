@@ -82,8 +82,8 @@ if __name__ == "__main__":
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
-            'psnr': psnr,
-            'ssim': ssim
+            'psnr': psnr / len(valid_loader),
+            'ssim': ssim / len(valid_loader)
         }
         if psnr > best_psnr:
             best_psnr = psnr
