@@ -26,6 +26,7 @@ def get_args():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10,
                         help='how many batches to wait before logging training status')
+
     parser.add_argument('--resume', action='store_true',
                         help='resume from existing log directory?')
     

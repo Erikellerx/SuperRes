@@ -52,6 +52,7 @@ if __name__ == "__main__":
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batch)
     
     model = build_model(args)
+
     model.to(args.device)
     
     criterion = build_criterion(args)
