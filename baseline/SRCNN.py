@@ -5,11 +5,11 @@ from torch import nn
 import torch.nn.functional as F
 
 class SRCNN(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, gray_scale: bool = False) -> None:
         super(SRCNN, self).__init__()
         # Feature extraction layer.
         self.features = nn.Sequential(
-            nn.Conv2d(3, 64, (9, 9), (1, 1), (4, 4)),
+            nn.Conv2d(1 if gray_scale else 3, 64, (9, 9), (1, 1), (4, 4)),
             nn.ReLU(True)
         )
 
@@ -20,7 +20,7 @@ class SRCNN(nn.Module):
         )
 
         # Rebuild the layer.
-        self.reconstruction = nn.Conv2d(32, 3, (5, 5), (1, 1), (2, 2))
+        self.reconstruction = nn.Conv2d(32, 1 if gray_scale else 3, (5, 5), (1, 1), (2, 2))
 
         # Initialize model weights.
         self._initialize_weights()
