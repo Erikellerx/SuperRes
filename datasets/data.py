@@ -106,7 +106,8 @@ if __name__ == "__main__":
  
     # Create dataset object
     train_dataset = DIV2K(data_dir, train=True, visualize=True)
-
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    
 
     # Iterate over data loader
     for lr_image_patched, hr_image_patched, lr_image, hr_image in train_dataset:

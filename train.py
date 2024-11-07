@@ -70,14 +70,14 @@ if __name__ == "__main__":
     train_dataset = DIV2K(args.data_dir, train=True)
     valid_dataset = DIV2K(args.data_dir, train=False)
     
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batchsize, shuffle=True)
-    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batchsize, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batchsize, shuffle=True, pin_memory=True)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batchsize, shuffle=True, pin_memory=True)
     
     model = build_model(args.model)
     model.to(args.device)
     
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=1e-4)
     
     best_psnr = 0
     
