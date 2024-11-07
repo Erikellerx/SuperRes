@@ -1,65 +1,43 @@
 from tqdm import tqdm
 import os
-import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
-from torchvision import transforms
+import pickle
+import tensorboardX
 
 from datasets.data import DIV2K
-from baseline.SRCNN import SRCNN
-from metrics import PSNR, SSIM
 from args import get_args
-from utils import build_model
+from utils import *
+from train_utils import *
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 
-
-def train(model, loader, optimizer, criterion, device, epoch):
-    model.train()
-    running_loss = 0.0
-    for i, data in enumerate(tqdm(loader, desc="Training", leave=False)):
-        lr, hr = data
-        lr, hr = lr.to(device), hr.to(device)
-        optimizer.zero_grad()
-        sr = model(lr)
-        loss = criterion(sr, hr)
-        loss.backward()
-        optimizer.step()
-        running_loss += loss.item()
-        
-        if i % 10 == 0:
-            tqdm.write(f"Epoch: {epoch} Step {i}/{len(loader)}: Loss {loss.item()}")
-            
-    return running_loss / len(loader)
-
-
-def validation(model, loader, criterion, device, epoch):
-    model.eval()
-    running_loss = 0.0
-    psnr = 0
-    ssim = 0
-    with torch.no_grad():
-        for i, data in enumerate(tqdm(loader, desc="Validation", leave=False)):
-            lr, hr = data
-            lr, hr = lr.to(device), hr.to(device)
-            sr = model(lr)
-            loss = criterion(sr, hr)
-            running_loss += loss.item()
-            
-            psnr += PSNR(sr, hr)
-            ssim += SSIM(sr, hr)
-                  
-    tqdm.write(f"\nEpoch: {epoch} Validation Loss: {running_loss / len(loader)}, PSNR: {psnr / len(loader)}, SSIM: {ssim / len(loader)}\n")
-    return running_loss / len(loader), psnr / len(loader), ssim / len(loader)
-
-
 if __name__ == "__main__":
     
     args = get_args()
+
+    logdir = os.path.join(args.log_dir, args.experiment_name)
+    args_path = os.path.join(logdir, "args.pkl")
+    
+    best_model_path = os.path.join(logdir, "best_model.pth")
+    latest_model_path = os.path.join(logdir, "latest_model.pth")
+
+    if os.path.exists(logdir):
+        if args.resume:
+            print(f"Resuming experiment {args.experiment_name}")
+            with open(args_path, "rb") as f:
+                args = pickle.load(f)
+            args.resume = True
+        else:
+            s = input(f"Experiment {args.experiment_name} already exists. Do you want to continue? (y/n) ")
+            if s != "y":
+                exit(0)
+    else:
+        os.makedirs(logdir)
+    
+    with open(args_path, "wb") as f:
+        pickle.dump(args, f)
     
     #print args in a readable format
     print("======> Arguments: <======")
@@ -67,48 +45,57 @@ if __name__ == "__main__":
         print(f"{arg}:", getattr(args, arg))
     print()
 
-    train_dataset = DIV2K(args.data_dir, train=True)
-    valid_dataset = DIV2K(args.data_dir, train=False)
+    train_dataset = DIV2K(args.data_dir, train=True, gray_scale=args.gray_scale)
+    valid_dataset = DIV2K(args.data_dir, train=False, gray_scale=args.gray_scale)
     
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batchsize, shuffle=True, pin_memory=True)
-    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batchsize, shuffle=True, pin_memory=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch, shuffle=True)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batch)
     
-    model = build_model(args.model, args.resume)
-    
+    model = build_model(args)
+
     model.to(args.device)
     
-    criterion = nn.MSELoss()
-    '''optimizer = optim.AdamW([{"params": model.features.parameters()},
-                           {"params": model.map.parameters()},
-                           {"params": model.reconstruction.parameters(), "lr": args.lr * 0.1}],
-                          lr=args.lr)'''
-    optimizer = optim.AdamW(model.parameters(), lr=args.lr)
-    
+    criterion = build_criterion(args)
+    optimizer = build_optimizer(model, args)
+    scheduler = build_scheduler(optimizer, args)
+
+    if args.resume:
+        ckpt = torch.load(latest_model_path)
+        model.load_state_dict(ckpt['model'])
+        tqdm.write("Latest Model loaded")
+        scheduler.load_state_dict(ckpt['scheduler'])
+        optimizer.load_state_dict(ckpt['optimizer'])
+        tqdm.write("Optimizer and Scheduler loaded")
+
+        starting_epoch = ckpt['epoch']
+    else:
+        starting_epoch = 0
+
+    writer = tensorboardX.SummaryWriter(logdir)
+
     best_psnr = 0
-    best_ssim = 0
-    
-    for epoch in range(1, 100):
-        train(model, train_loader, optimizer, criterion, args.device, epoch)
-        _, psnr, ssim = validation(model, valid_loader, criterion, args.device, epoch)
+    for epoch in range(starting_epoch, 400):
+        train_loss = train(model, train_loader, optimizer, criterion, args.device, epoch + 1)
+        valid_loss, psnr, ssim = validation(model, valid_loader, criterion, args.device, epoch + 1)
         
+        saved_dict = {
+            'epoch': epoch + 1,
+            'model': model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            'scheduler': scheduler.state_dict(),
+            'psnr': psnr / len(valid_loader),
+            'ssim': ssim / len(valid_loader)
+        }
         if psnr > best_psnr:
             best_psnr = psnr
-            #delete all previous pth model related to psnr
-            for file in os.listdir(f"checkpoint/{args.model}/"):
-                if file.startswith(f"{args.model}_3channel_psnr"):
-                    os.remove(f"checkpoint/{args.model}/{file}")
-            torch.save(model.state_dict(), f"checkpoint/{args.model}/{args.model}_3channel_psnr{psnr:.2f}.pth")
-            tqdm.write("Best PSNR Model saved")
+            torch.save(saved_dict, best_model_path)
+
+        writer.add_scalar("Loss/train", train_loss / len(train_loader), epoch + 1)
+        writer.add_scalar("Loss/val", valid_loss / len(valid_loader), epoch + 1)
+        writer.add_scalar("PSNR/val", psnr / len(valid_loader), epoch + 1)
+        writer.add_scalar("SSIM/val", ssim / len(valid_loader), epoch + 1)
+        writer.add_scalar("Learning rate", optimizer.param_groups[0]['lr'], epoch + 1)
+
+        torch.save(saved_dict, latest_model_path)
         
-        if ssim > best_ssim:
-            best_ssim = ssim
-            #delete all previous pth model related to ssim
-            for file in os.listdir(f"checkpoint/{args.model}/"):
-                if file.startswith(f"{args.model}_3channel_ssim"):
-                    os.remove(f"checkpoint/{args.model}/{file}")
-            torch.save(model.state_dict(), f"checkpoint/{args.model}/{args.model}_3channel_ssim{ssim:.2f}.pth")
-            tqdm.write("Best SSIM Model saved")
-        
-    
-    
-    
+        scheduler.step()

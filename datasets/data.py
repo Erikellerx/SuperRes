@@ -11,7 +11,7 @@ from torchvision import transforms
 
 
 class DIV2K(Dataset):
-    def __init__(self, data_dir,train = True, scale_factor=4, visualize=False):
+    def __init__(self, data_dir,train = True, scale_factor=4, visualize=False, gray_scale=False):
      
         self.visualize = visualize
         self.patch_size = 48
@@ -19,16 +19,15 @@ class DIV2K(Dataset):
         self.train = train
      
         # Get all paths of images inside `data_dir` into a list
-        self.lr_transform = transforms.Compose([
-            #grayscale images are converted to 3 channels
-            #transforms.Grayscale(num_output_channels=1),
+        lr_transorm = [
             transforms.ToTensor()
-        ])
-  
-        self.hr_transform = transforms.Compose([
-            #transforms.Grayscale(num_output_channels=1),
+        ] + ([transforms.Grayscale(num_output_channels=1)] if gray_scale else [])
+        self.lr_transform = transforms.Compose(lr_transorm)
+
+        hr_transorm = [
             transforms.ToTensor()
-        ])
+        ] + ([transforms.Grayscale(num_output_channels=1)] if gray_scale else [])
+        self.hr_transform = transforms.Compose(hr_transorm)
   
   
         if train:
@@ -56,8 +55,8 @@ class DIV2K(Dataset):
 
     def __getitem__(self, index):
         # Read HR and LR images using PIL
-        hr_image = Image.open(self.hr_file_paths[index])
-        lr_image = Image.open(self.lr_file_paths[index])
+        hr_image = Image.open(self.hr_file_paths[index]).convert("RGB")
+        lr_image = Image.open(self.lr_file_paths[index]).convert("RGB")
 
         # Apply transformation to images
         hr_image = self.hr_transform(hr_image)
