@@ -54,7 +54,7 @@ def validation(model, loader, criterion, device, epoch):
             ssim += SSIM(sr, hr)
                   
     tqdm.write(f"\nEpoch: {epoch} Validation Loss: {running_loss / len(loader)}, PSNR: {psnr / len(loader)}, SSIM: {ssim / len(loader)}\n")
-    return running_loss / len(loader), psnr, ssim
+    return running_loss / len(loader), psnr / len(loader), ssim / len(loader)
 
 
 if __name__ == "__main__":
@@ -73,8 +73,8 @@ if __name__ == "__main__":
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batchsize, shuffle=True, pin_memory=True)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batchsize, shuffle=True, pin_memory=True)
     
-    model = build_model(args.model)
-    model.load_state_dict(torch.load("pretrain/ref_srcnn_x4.pth"))
+    model = build_model(args.model, args.resume)
+    
     model.to(args.device)
     
     criterion = nn.MSELoss()
@@ -88,18 +88,26 @@ if __name__ == "__main__":
     best_ssim = 0
     
     for epoch in range(1, 100):
-        #train(model, train_loader, optimizer, criterion, args.device, epoch)
+        train(model, train_loader, optimizer, criterion, args.device, epoch)
         _, psnr, ssim = validation(model, valid_loader, criterion, args.device, epoch)
         
         if psnr > best_psnr:
             best_psnr = psnr
-            torch.save(model.state_dict(), f"checkpoint/{args.model}_3channel_psnr{psnr:.2f}.pth")
-            tqdm.write("Best Model saved")
+            #delete all previous pth model related to psnr
+            for file in os.listdir(f"checkpoint/{args.model}/"):
+                if file.startswith(f"{args.model}_3channel_psnr"):
+                    os.remove(f"checkpoint/{args.model}/{file}")
+            torch.save(model.state_dict(), f"checkpoint/{args.model}/{args.model}_3channel_psnr{psnr:.2f}.pth")
+            tqdm.write("Best PSNR Model saved")
         
         if ssim > best_ssim:
             best_ssim = ssim
-            torch.save(model.state_dict(), f"checkpoint/{args.model}_3channel_ssim{ssim:.2f}.pth")
-            tqdm.write("Best Model saved")
+            #delete all previous pth model related to ssim
+            for file in os.listdir(f"checkpoint/{args.model}/"):
+                if file.startswith(f"{args.model}_3channel_ssim"):
+                    os.remove(f"checkpoint/{args.model}/{file}")
+            torch.save(model.state_dict(), f"checkpoint/{args.model}/{args.model}_3channel_ssim{ssim:.2f}.pth")
+            tqdm.write("Best SSIM Model saved")
         
     
     

@@ -19,6 +19,8 @@ def get_args():
                         help='random seed (default: 1)')
     parser.add_argument('--log-interval', type=int, default=10,
                         help='how many batches to wait before logging training status')
+    parser.add_argument('--resume', action='store_true', default=False,
+                        help='resume training from last checkpoint')
     parser.add_argument('--model', type=str, default='SRCNN')
     args = parser.parse_args()
     args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
