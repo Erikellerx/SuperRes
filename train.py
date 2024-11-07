@@ -52,6 +52,7 @@ if __name__ == "__main__":
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batch)
     
     model = build_model(args)
+    model.to(args.device)
     
     criterion = build_criterion(args)
     optimizer = build_optimizer(model, args)
@@ -68,13 +69,11 @@ if __name__ == "__main__":
         starting_epoch = ckpt['epoch']
     else:
         starting_epoch = 0
-    
-    model.to(args.device)
 
     writer = tensorboardX.SummaryWriter(logdir)
 
     best_psnr = 0
-    for epoch in range(starting_epoch, 100):
+    for epoch in range(starting_epoch, 400):
         train_loss = train(model, train_loader, optimizer, criterion, args.device, epoch + 1)
         valid_loss, psnr, ssim = validation(model, valid_loader, criterion, args.device, epoch + 1)
         
