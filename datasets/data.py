@@ -72,9 +72,15 @@ class DIV2K(Dataset):
             hr_image_patched = hr_image[:, hr_random_x:hr_random_x + self.patch_size * self.scale_factor, hr_random_y:hr_random_y + self.patch_size * self.scale_factor]
             
         else:
+             # Determine evenly spaced 3x3 patch coordinates based on the index
+            grid_size = 3  # 3x3 grid
+            lr_grid_step = lr_image.shape[1] // grid_size  # Step size for LR patches
+            hr_grid_step = hr_image.shape[1] // grid_size  # Step size for HR patches
+
+            # Determine patch position within the 3x3 grid
             patch_index = index % 9  # 9 patches per image
-            patch_x = (patch_index % 3) * self.patch_size
-            patch_y = (patch_index // 3) * self.patch_size
+            patch_x = (patch_index % grid_size) * lr_grid_step
+            patch_y = (patch_index // grid_size) * lr_grid_step
 
             hr_patch_x = patch_x * self.scale_factor
             hr_patch_y = patch_y * self.scale_factor
