@@ -74,20 +74,31 @@ if __name__ == "__main__":
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=args.test_batchsize, shuffle=True, pin_memory=True)
     
     model = build_model(args.model)
+    model.load_state_dict(torch.load("pretrain/ref_srcnn_x4.pth"))
     model.to(args.device)
     
     criterion = nn.MSELoss()
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=1e-4)
+    '''optimizer = optim.AdamW([{"params": model.features.parameters()},
+                           {"params": model.map.parameters()},
+                           {"params": model.reconstruction.parameters(), "lr": args.lr * 0.1}],
+                          lr=args.lr)'''
+    optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     
     best_psnr = 0
+    best_ssim = 0
     
     for epoch in range(1, 100):
-        train(model, train_loader, optimizer, criterion, args.device, epoch)
+        #train(model, train_loader, optimizer, criterion, args.device, epoch)
         _, psnr, ssim = validation(model, valid_loader, criterion, args.device, epoch)
         
         if psnr > best_psnr:
             best_psnr = psnr
-            torch.save(model.state_dict(), "checkpoint/srcnn_3channel.pth")
+            torch.save(model.state_dict(), f"checkpoint/{args.model}_3channel_psnr{psnr:.2f}.pth")
+            tqdm.write("Best Model saved")
+        
+        if ssim > best_ssim:
+            best_ssim = ssim
+            torch.save(model.state_dict(), f"checkpoint/{args.model}_3channel_ssim{ssim:.2f}.pth")
             tqdm.write("Best Model saved")
         
     

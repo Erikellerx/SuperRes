@@ -20,10 +20,13 @@ class DIV2K(Dataset):
      
         # Get all paths of images inside `data_dir` into a list
         self.lr_transform = transforms.Compose([
+            #grayscale images are converted to 3 channels
+            #transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor()
         ])
   
         self.hr_transform = transforms.Compose([
+            #transforms.Grayscale(num_output_channels=1),
             transforms.ToTensor()
         ])
   
