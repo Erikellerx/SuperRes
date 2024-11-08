@@ -6,6 +6,7 @@ from baseline.SRCNN import SRCNN
 from baseline.FSRCNN import FSRCNN
 from baseline.VDSR import VDSR
 from baseline.ESPCN import ESPCN, espcn_x4
+from baseline.IDN import IDN
 import torch
 
 import warnings
@@ -26,6 +27,9 @@ def build_model(args):
     elif model_name == 'ESPCN':
         print("======>  Baseline Model: ESPCN  <======")
         return espcn_x4(in_channels=3, out_channels=3, channels=64)
+    elif model_name == 'IDN':
+        print("======>  Baseline Model: IDN  <======")
+        return IDN()
     else:
         raise ValueError("Model not found")
     
