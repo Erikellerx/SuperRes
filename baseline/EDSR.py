@@ -6,169 +6,95 @@ import math
 
 import torch.nn as nn
 
-url = {
-    'r16f64x2': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_baseline_x2-1bc95232.pt',
-    'r16f64x3': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_baseline_x3-abf2a44e.pt',
-    'r16f64x4': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_baseline_x4-6b446fab.pt',
-    'r32f256x2': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_x2-0edfb8a3.pt',
-    'r32f256x3': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_x3-ea3ef2c6.pt',
-    'r32f256x4': 'https://cv.snu.ac.kr/research/EDSR/models/edsr_x4-4f62e9ef.pt'
-}
+class EDSRResBlock(nn.Module):
+    def __init__(self, filters=64, kernel_size=3, padding='same', res_scaling=1):
+        super(EDSRResBlock, self).__init__()
 
-def default_conv(in_channels, out_channels, kernel_size, bias=True):
-    return nn.Conv2d(
-        in_channels, out_channels, kernel_size,
-        padding=(kernel_size//2), bias=bias)
+        self.res_scaling = res_scaling
 
-class MeanShift(nn.Conv2d):
-    def __init__(
-        self, rgb_range,
-        rgb_mean=(0.4488, 0.4371, 0.4040), rgb_std=(1.0, 1.0, 1.0), sign=-1):
-
-        super(MeanShift, self).__init__(3, 3, kernel_size=1)
-        std = torch.Tensor(rgb_std)
-        self.weight.data = torch.eye(3).view(3, 3, 1, 1) / std.view(3, 1, 1, 1)
-        self.bias.data = sign * rgb_range * torch.Tensor(rgb_mean) / std
-        for p in self.parameters():
-            p.requires_grad = False
-            
-class BasicBlock(nn.Sequential):
-    def __init__(
-        self, conv, in_channels, out_channels, kernel_size, stride=1, bias=False,
-        bn=True, act=nn.ReLU(True)):
-
-        m = [conv(in_channels, out_channels, kernel_size, bias=bias)]
-        if bn:
-            m.append(nn.BatchNorm2d(out_channels))
-        if act is not None:
-            m.append(act)
-
-        super(BasicBlock, self).__init__(*m)
-
-class ResBlock(nn.Module):
-    def __init__(
-        self, conv, n_feats, kernel_size,
-        bias=True, bn=False, act=nn.ReLU(True), res_scale=1):
-
-        super(ResBlock, self).__init__()
-        m = []
-        for i in range(2):
-            m.append(conv(n_feats, n_feats, kernel_size, bias=bias))
-            if bn:
-                m.append(nn.BatchNorm2d(n_feats))
-            if i == 0:
-                m.append(act)
-
-        self.body = nn.Sequential(*m)
-        self.res_scale = res_scale
+        self.conv1 = nn.Conv2d(filters, filters, kernel_size, padding=kernel_size//2)
+        self.relu = nn.ReLU()
+        self.conv2 = nn.Conv2d(filters, filters, kernel_size, padding=kernel_size//2)
 
     def forward(self, x):
-        res = self.body(x).mul(self.res_scale)
-        res += x
+        out = self.conv1(x)   # Conv
+        out = self.relu(out)  # ReLU
+        out = self.conv2(out) # Conv
+        out = out * self.res_scaling
+        out = out + x         # Addition/Skip connection
 
-        return res
+        return out
 
-class Upsampler(nn.Sequential):
-    def __init__(self, conv, scale, n_feats, bn=False, act=False, bias=True):
+class Upsample(nn.Module):
+    def __init__(self, filters=64, kernel_size=3, padding='same'):
+        super(Upsample, self).__init__()
+        
+        scaling_factor = 2
+        self.conv = nn.Conv2d(filters, filters*scaling_factor**2, kernel_size, padding=kernel_size//2)
+        self.pixel_shuffle = nn.PixelShuffle(scaling_factor)
 
-        m = []
-        if (scale & (scale - 1)) == 0:    # Is scale = 2^n?
-            for _ in range(int(math.log(scale, 2))):
-                m.append(conv(n_feats, 4 * n_feats, 3, bias))
-                m.append(nn.PixelShuffle(2))
-                if bn:
-                    m.append(nn.BatchNorm2d(n_feats))
-                if act == 'relu':
-                    m.append(nn.ReLU(True))
-                elif act == 'prelu':
-                    m.append(nn.PReLU(n_feats))
+    def forward(self, x):
+        out = self.conv(x) # Channels: 64 -> 256
+        out = self.pixel_shuffle(out) # Channels: 256 -> 64
 
-        elif scale == 3:
-            m.append(conv(n_feats, 9 * n_feats, 3, bias))
-            m.append(nn.PixelShuffle(3))
-            if bn:
-                m.append(nn.BatchNorm2d(n_feats))
-            if act == 'relu':
-                m.append(nn.ReLU(True))
-            elif act == 'prelu':
-                m.append(nn.PReLU(n_feats))
-        else:
-            raise NotImplementedError
+        return out
 
-        super(Upsampler, self).__init__(*m)
+class MeanShift(nn.Module):
+    def __init__(self, rgb_range=1, rgb_mean=(0.4488, 0.4371, 0.4040), sign=-1):
+        super(MeanShift, self).__init__()
+        
+        rgb_mean = sign * rgb_range * torch.Tensor(rgb_mean)
+        self.register_buffer('rgb_mean', rgb_mean.view(1,3,1,1))
+        
+    def forward(self, x):
+        return x + self.rgb_mean
+
 
 class EDSR(nn.Module):
-    def __init__(self, conv=default_conv):
+    def __init__(self, n_resblock=16, filters=64, res_scaling=1, scale=4):
         super(EDSR, self).__init__()
-
-        n_resblocks = 32
-        n_feats = 256
-        kernel_size = 3 
-        scale = 4
-        act = nn.ReLU(True)
-        url_name = 'r{}f{}x{}'.format(n_resblocks, n_feats, scale)
-        if url_name in url:
-            self.url = url[url_name]
-        else:
-            self.url = None
-        self.sub_mean = MeanShift(1)
-        self.add_mean = MeanShift(1, sign=1)
-
-        # define head module
-        m_head = [conv(3, n_feats, kernel_size)]
-
-        # define body module
-        m_body = [
-            ResBlock(
-                conv, n_feats, kernel_size, act=act, res_scale=4
-            ) for _ in range(n_resblocks)
-        ]
-        m_body.append(conv(n_feats, n_feats, kernel_size))
-
-        # define tail module
-        m_tail = [
-            Upsampler(conv, scale, n_feats, act=False),
-            conv(n_feats, 3, kernel_size)
-        ]
-
-        self.head = nn.Sequential(*m_head)
-        self.body = nn.Sequential(*m_body)
-        self.tail = nn.Sequential(*m_tail)
-
+        
+        self.scale = scale
+        
+        # Define convolutional layers
+        self.conv_in = nn.Conv2d(3, filters, kernel_size=3, padding=3//2)
+        self.conv_mid = nn.Conv2d(filters, filters, kernel_size=3, padding=3//2)
+        self.conv_out = nn.Conv2d(filters, 3, kernel_size=3, padding=3//2)
+        
+        # Define ResBlock layers
+        res_blocks = [EDSRResBlock(filters=filters, res_scaling=res_scaling) for _ in range(n_resblock)]
+        self.res_blocks = nn.Sequential(*res_blocks)
+        
+        # Define Upscale layers
+        self.upsample_x2 = Upsample(filters=filters)
+        if scale == 4:
+            self.upsample_x4 = Upsample(filters=filters)
+            
+        # Define normalization layers
+        self.mean_sub = MeanShift(sign=-1)
+        self.mean_add = MeanShift(sign=1)
+    
+    
     def forward(self, x):
-        x = self.sub_mean(x)
-        x = self.head(x)
+        x = self.mean_sub(x) # Subtract DIV2k mean
+        x = self.conv_in(x) # Channels: 3 -> 64
 
-        res = self.body(x)
-        res += x
+        out = self.res_blocks(x)
+        out = self.conv_mid(out)
+        out = out + x # Addition/Skip connection
 
-        x = self.tail(res)
-        x = self.add_mean(x)
+        out = self.upsample_x2(out) # Upsample to X2
+        if self.scale == 4:
+            out = self.upsample_x4(out) # Upsample to X4
+            
+        out = self.conv_out(out) # Channels: 64 -> 3
+        out = self.mean_add(out) # Add DIV2k mean
 
-        return x 
-
-    def load_state_dict(self, state_dict, strict=True):
-        own_state = self.state_dict()
-        for name, param in state_dict.items():
-            if name in own_state:
-                if isinstance(param, nn.Parameter):
-                    param = param.data
-                try:
-                    own_state[name].copy_(param)
-                except Exception:
-                    if name.find('tail') == -1:
-                        raise RuntimeError('While copying the parameter named {}, '
-                                           'whose dimensions in the model are {} and '
-                                           'whose dimensions in the checkpoint are {}.'
-                                           .format(name, own_state[name].size(), param.size()))
-            elif strict:
-                if name.find('tail') == -1:
-                    raise KeyError('unexpected key "{}" in state_dict'
-                                   .format(name))
+        return out
 
 # Test the model with a sample input
 if __name__ == "__main__":
-    model = EDSR()
+    model = EDSR(filters=256, n_resblock=32, res_scaling=0.1, scale=4)
     
     from torchsummary import summary
     

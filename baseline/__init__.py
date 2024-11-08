@@ -4,6 +4,7 @@ from .VDSR import VDSR
 from .ESPCN import ESPCN
 from .IDN import IDN
 from .EDSR import EDSR
+from .Interpolate import Interpolate
 
-model_names = ['FSRCNN', 'SRCNN', 'VDSR', 'EDSR', 'ESPCN', 'IDN', 'EDSR']
+model_names = ['FSRCNN', 'SRCNN', 'VDSR', 'EDSR', 'ESPCN', 'IDN', 'EDSR', 'Interpolate']
 __all__ = model_names

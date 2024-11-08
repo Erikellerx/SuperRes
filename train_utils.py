@@ -9,11 +9,14 @@ def train(model, loader, optimizer, criterion, device, epoch):
     for i, data in enumerate(tqdm(loader, desc="Training", leave=False)):
         lr, hr = data
         lr, hr = lr.to(device), hr.to(device)
+        
         optimizer.zero_grad()
         sr = model(lr)
         loss = criterion(sr, hr)
+        
         loss.backward()
         optimizer.step()
+        
         running_loss += loss.item()
         
         if i % 10 == 0:

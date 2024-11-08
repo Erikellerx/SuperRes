@@ -11,7 +11,7 @@ from torchvision import transforms
 
 
 class DIV2K(Dataset):
-    def __init__(self, data_dir,train = True, scale_factor=4, visualize=False, gray_scale=False):
+    def __init__(self, data_dir, train = True, scale_factor=4, visualize=False, gray_scale=False):
      
         self.visualize = visualize
         self.patch_size = 48
@@ -64,14 +64,17 @@ class DIV2K(Dataset):
   
         if self.train:
 
-            lr_random_x = np.random.randint(0, lr_image.shape[1] - self.patch_size)
-            lr_random_y = np.random.randint(0, lr_image.shape[2] - self.patch_size)
+            lr_random_y = np.random.randint(0, lr_image.shape[1] - self.patch_size)
+            lr_random_x = np.random.randint(0, lr_image.shape[2] - self.patch_size)
 
-            hr_random_x = lr_random_x * self.scale_factor
             hr_random_y = lr_random_y * self.scale_factor
+            hr_random_x = lr_random_x * self.scale_factor
 
-            lr_image_patched = lr_image[:, lr_random_x:lr_random_x + self.patch_size, lr_random_y:lr_random_y + self.patch_size]
-            hr_image_patched = hr_image[:, hr_random_x:hr_random_x + self.patch_size * self.scale_factor, hr_random_y:hr_random_y + self.patch_size * self.scale_factor]
+            lr_image_patched = lr_image[:, lr_random_y:lr_random_y + self.patch_size, lr_random_x:lr_random_x + self.patch_size]
+            hr_image_patched = hr_image[:, hr_random_y:hr_random_y + self.patch_size * self.scale_factor, hr_random_x:hr_random_x + self.patch_size * self.scale_factor]
+
+            lr_xy = (lr_random_x, lr_random_y)
+            hr_xy = (hr_random_x, hr_random_y)
             
         else:
             # Determine evenly spaced 3x3 patch coordinates based on the index
@@ -94,45 +97,10 @@ class DIV2K(Dataset):
             lr_image_patched = lr_image[:, patch_y:patch_y + self.patch_size, patch_x:patch_x + self.patch_size]
             hr_image_patched = hr_image[:, hr_patch_y:hr_patch_y + self.patch_size * self.scale_factor, hr_patch_x:hr_patch_x + self.patch_size * self.scale_factor]
 
-
+            lr_xy = (patch_x, patch_y)
+            hr_xy = (hr_patch_x, hr_patch_y)
 
         if self.visualize:
-            return lr_image_patched, hr_image_patched, lr_image, hr_image
-        return lr_image_patched, hr_image_patched
-     
-     
-     
-if __name__ == "__main__":
-    
-    data_dir = "F:\superRes\datasets\DIV2K"
- 
-    # Create dataset object
-    train_dataset = DIV2K(data_dir, train=True, visualize=True)
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
-    
-
-    # Iterate over data loader
-    for lr_image_patched, hr_image_patched, lr_image, hr_image in train_dataset:
-        print(lr_image_patched.shape, hr_image_patched.shape, lr_image.shape, hr_image.shape)
+            return lr_image_patched, hr_image_patched, lr_image, hr_image, lr_xy, hr_xy
         
-        # Visualize images
-        plt.figure()
-        plt.subplot(1, 2, 1)
-        plt.imshow(lr_image_patched.permute(1, 2, 0))
-        plt.title("LR Image Patched")	
-        plt.subplot(1, 2, 2)	
-        plt.imshow(hr_image_patched.permute(1, 2, 0))	
-        plt.title("HR Image Patched")
-  
-    
-        plt.figure()
-        plt.subplot(1, 2, 1)
-        plt.imshow(lr_image.permute(1, 2, 0))
-        plt.title("LR Image")	
-        plt.subplot(1, 2, 2)
-        plt.imshow(hr_image.permute(1, 2, 0))
-        plt.title("HR Image")
-        plt.show()
-        break
-    
-    
+        return lr_image_patched, hr_image_patched

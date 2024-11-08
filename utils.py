@@ -1,6 +1,9 @@
-from argparse import Namespace
 import torch.optim as optim
 import torch.nn as nn
+import torch
+
+from matplotlib import pyplot as plt
+from matplotlib import patches
 
 from baseline.SRCNN import SRCNN
 from baseline.FSRCNN import FSRCNN
@@ -8,8 +11,13 @@ from baseline.VDSR import VDSR
 from baseline.ESPCN import ESPCN, espcn_x4
 from baseline.IDN import IDN
 from baseline.EDSR import EDSR
-import torch
+from baseline import Interpolate
 
+from datasets import DIV2K
+
+from metrics import PSNR, SSIM
+
+from argparse import Namespace
 import warnings
 
 def build_model(args):
@@ -33,7 +41,10 @@ def build_model(args):
         return IDN()
     elif model_name == 'EDSR':
         print("======>  Baseline Model: EDSR  <======")
-        return EDSR()
+        return EDSR(filters=256, n_resblock=32, res_scaling=0.1, scale=4)
+    elif model_name == 'Interpolate':
+        print("======>  Baseline Model: Interpolate  <======")
+        return Interpolate()
     else:
         raise ValueError("Model not found")
     
@@ -99,6 +110,52 @@ For cosine: format is cosine+[t_max]+[eta_min]
     
 
 
+def visualize(ds: DIV2K, models: list[nn.Module], model_names: list[str], device: torch.device, max_num: int = 10):
+    if not ds.visualize:
+        warnings.warn("Dataset is not set to visualize mode, skipping visualization.", UserWarning)
+        return
+    
+    patch_size = ds.patch_size
+    scale_factor = ds.scale_factor
+
+    for i, (lr_image_patched, hr_image_patched, lr_image, hr_image, lr_xy, hr_xy) in enumerate(ds):
+
+        if i == max_num:
+            break
+
+        lr_image_patched = lr_image_patched.unsqueeze(0)
+        hr_image_patched = hr_image_patched.unsqueeze(0)
+        
+        num_axes = 2 + len(models)
+        fig, axes = plt.subplots(1, num_axes, figsize=(5 * num_axes, 10))
+
+        patch_width = patch_height = patch_size * scale_factor
+        axes[0].imshow(hr_image.permute(1, 2, 0).numpy())
+        axes[0].add_patch(patches.Rectangle(hr_xy, patch_width, patch_height, linewidth=3, edgecolor='r', facecolor='none'))
+        axes[0].set_title("HR")
+        axes[0].axis('off')
+
+        axes[1].imshow(hr_image_patched[0].permute(1, 2, 0).numpy())
+        axes[1].set_title("HR Ground Truth")
+        axes[1].axis('off')
+
+        for j, model in enumerate(models):
+            if isinstance(model, Interpolate):
+                model_name = model.mode
+            else:
+                model_name = model_names[j]
+
+            model = model.to(device)
+            sr = model(lr_image_patched.to(device)).detach().cpu()
+            psnr = PSNR(sr, hr_image_patched)
+            ssim = SSIM(sr, hr_image_patched)
+
+            sr = sr.squeeze(0).permute(1, 2, 0).numpy()
+            axes[2 + j].imshow(sr)
+            axes[2 + j].set_title(f"{model_name}, PSNR: {psnr:.2f}, SSIM: {ssim:.4f}")
+            axes[2 + j].axis('off')
+        
+        plt.show()
 
 
 
