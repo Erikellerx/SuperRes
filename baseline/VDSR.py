@@ -2,6 +2,7 @@ from math import sqrt
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 
 class ConvReLU(nn.Module):
@@ -39,6 +40,7 @@ class VDSR(nn.Module):
         self._initialize_weights()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.interpolate(x, scale_factor=4, mode='bicubic', align_corners=False)
         return self._forward_impl(x)
 
     # Support torch.script function
