@@ -1,19 +1,16 @@
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torch.utils.data as data
-from torchvision import datasets
-
+import math
 
 class EDSRResBlock(nn.Module):
-    def __init__(self, filters=64, kernel_size=3, padding='same', res_scaling=1):
+    def __init__(self, channels=64, kernel_size=3, res_scaling=1):
         super(EDSRResBlock, self).__init__()
 
         self.res_scaling = res_scaling
 
-        self.conv1 = nn.Conv2d(filters, filters, kernel_size, padding=kernel_size//2)
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size, padding=kernel_size // 2)
         self.relu = nn.ReLU()
-        self.conv2 = nn.Conv2d(filters, filters, kernel_size, padding=kernel_size//2)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size, padding=kernel_size // 2)
 
     def forward(self, x):
         out = self.conv1(x)   # Conv
@@ -23,70 +20,74 @@ class EDSRResBlock(nn.Module):
         out = out + x         # Addition/Skip connection
 
         return out
-    
-class Upsample(nn.Module):
-    def __init__(self, filters=64, kernel_size=3, padding='same'):
-        super(Upsample, self).__init__()
-        
-        scaling_factor = 2
-        self.conv = nn.Conv2d(filters, filters*scaling_factor**2, kernel_size, padding=kernel_size//2)
-        self.pixel_shuffle = nn.PixelShuffle(scaling_factor)
 
-    def forward(self, x):
-        out = self.conv(x) # Channels: 64 -> 256
-        out = self.pixel_shuffle(out) # Channels: 256 -> 64
-
-        return out
-    
-class MeanShift(nn.Module):
-    def __init__(self, rgb_range=1, rgb_mean=(0.4488, 0.4371, 0.4040), sign=-1):
-        super(MeanShift, self).__init__()
-        
-        rgb_mean = sign * rgb_range * torch.Tensor(rgb_mean)
-        self.register_buffer('rgb_mean', rgb_mean.view(1,3,1,1))
-        
-    def forward(self, x):
-        return x + self.rgb_mean
-    
 class EDSR(nn.Module):
-    def __init__(self, n_resblock=16, filters=64, res_scaling=1, scale=4):
+    def __init__(
+            self,
+            in_channels: int,
+            out_channels: int,
+            channels: int = 64,
+            num_res_blocks: int = 16,
+            upscale_factor: int = 4,
+    ) -> None:
         super(EDSR, self).__init__()
-        
-        self.scale = scale
-        
-        # Define convolutional layers
-        self.conv_in = nn.Conv2d(3, filters, kernel_size=3, padding=3//2)
-        self.conv_mid = nn.Conv2d(filters, filters, kernel_size=3, padding=3//2)
-        self.conv_out = nn.Conv2d(filters, 3, kernel_size=3, padding=3//2)
-        
-        # Define ResBlock layers
-        res_blocks = [EDSRResBlock(filters=filters, res_scaling=res_scaling) for _ in range(n_resblock)]
-        self.res_blocks = nn.Sequential(*res_blocks)
-        
-        # Define Upscale layers
-        self.upsample_x2 = Upsample(filters=filters)
-        if scale == 4:
-            self.upsample_x4 = Upsample(filters=filters)
-            
-        # Define normalization layers
-        self.mean_sub = MeanShift(sign=-1)
-        self.mean_add = MeanShift(sign=1)
-    
-    
+
+        # Adjust out_channels for the sub-pixel convolution layer (same as ESPCN)
+        self.out_channels = int(out_channels * (upscale_factor ** 2))
+
+        # Initial feature extraction layer
+        self.conv_in = nn.Conv2d(in_channels, channels, kernel_size=3, padding=1)
+
+        # Residual blocks
+        self.res_blocks = nn.Sequential(*[EDSRResBlock(channels=channels) for _ in range(num_res_blocks)])
+
+        # Convolutional layer after residual blocks
+        self.conv_mid = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+
+        # Upsampling layer (sub-pixel convolution) for x4 scaling
+        self.sub_pixel = nn.Sequential(
+            nn.Conv2d(channels, self.out_channels, kernel_size=3, padding=1),
+            nn.PixelShuffle(upscale_factor),
+        )
+
+        # Final output layer to adjust back to desired output channels
+        self.conv_out = nn.Conv2d(channels, out_channels, kernel_size=3, padding=1)
+
+        # Initialize weights
+        self._initialize_weights()
+
+    def _initialize_weights(self):
+        # Custom initialization (similar to ESPCN)
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                if module.in_channels == 32:
+                    nn.init.normal_(module.weight.data, 0.0, 0.001)
+                    nn.init.zeros_(module.bias.data)
+                else:
+                    nn.init.normal_(module.weight.data, 0.0, math.sqrt(2 / (module.out_channels * module.weight[0][0].numel())))
+                    nn.init.zeros_(module.bias.data)
+
     def forward(self, x):
-        x = self.mean_sub(x) # Subtract DIV2k mean
-        x = self.conv_in(x) # Channels: 3 -> 64
+        x = self.conv_in(x)  # Initial convolution
+        residual = x
 
-        out = self.res_blocks(x)
-        out = self.conv_mid(out)
-        out = out + x # Addition/Skip connection
+        x = self.res_blocks(x)  # Pass through residual blocks
+        x = self.conv_mid(x)  # Intermediate convolution
+        x = x + residual  # Residual connection
 
-        out = self.upsample_x2(out) # Upsample to X2
-        if self.scale == 4:
-            out = self.upsample_x4(out) # Upsample to X4
-            
-        out = self.conv_out(out) # Channels: 64 -> 3
-        out = self.mean_add(out) # Add DIV2k mean
+        x = self.sub_pixel(x)  # Upsampling (x4)
+        x = self.conv_out(x)  # Final output adjustment
 
-        return out
+        return torch.clamp(x, 0.0, 1.0)
+
+# Helper function to create an EDSR model with x4 scaling
+def edsr_x4(in_channels: int, out_channels: int, channels: int = 64) -> EDSR:
+    return EDSR(in_channels=in_channels, out_channels=out_channels, channels=channels, upscale_factor=4)
+
+# Test the model with a sample input
+if __name__ == "__main__":
+    model = edsr_x4(in_channels=3, out_channels=3, channels=64)
     
+    from torchsummary import summary
+    
+    summary(model, (3, 48, 48))
