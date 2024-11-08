@@ -74,7 +74,7 @@ if __name__ == "__main__":
     writer = tensorboardX.SummaryWriter(logdir)
 
     best_psnr = 0
-    for epoch in range(starting_epoch, 400):
+    for epoch in range(starting_epoch, args.epochs):
         train_loss = train(model, train_loader, optimizer, criterion, args.device, epoch + 1)
         valid_loss, psnr, ssim = validation(model, valid_loader, criterion, args.device, epoch + 1)
         
