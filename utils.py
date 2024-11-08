@@ -33,7 +33,7 @@ def build_model(args):
         return IDN()
     elif model_name == 'EDSR':
         print("======>  Baseline Model: EDSR  <======")
-        return EDSR()
+        return EDSR(filters=256, n_resblock=32, res_scaling=0.1, scale=4)
     else:
         raise ValueError("Model not found")
     
