@@ -10,18 +10,15 @@ import torch
 
 import warnings
 
-def build_model(model_name, resume):
+def build_model(args):
+    model_name = args.model
     if model_name == 'SRCNN':
         print("======>  Baseline Model: SRCNN  <======")
         model = SRCNN()
-        if resume:
-            model.load_state_dict(torch.load('checkpoint\SRCNN\SRCNN_3channel_psnr26.18.pth'))
         return model
     elif model_name == 'FSRCNN':
         print("======>  Baseline Model: FSRCNN  <======")
         model = FSRCNN()
-        if resume:
-            model.load_state_dict(torch.load('checkpoint\FSRCNN\FSRCNN_3channel_psnr25.34.pth'))
         return model
     elif model_name == 'VDSR':
         print("======>  Baseline Model: VDSR  <======")
