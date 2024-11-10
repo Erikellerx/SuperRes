@@ -5,7 +5,7 @@ import pickle
 import tensorboardX
 
 from datasets.data import DIV2K
-from args import get_args
+from args import *
 from utils import *
 from train_utils import *
 
@@ -40,10 +40,7 @@ if __name__ == "__main__":
         pickle.dump(args, f)
     
     #print args in a readable format
-    print("======> Arguments: <======")
-    for arg in vars(args):
-        print(f"{arg}:", getattr(args, arg))
-    print()
+    print_args(args)
 
     train_dataset = DIV2K(args.data_dir, train=True, gray_scale=args.gray_scale)
     valid_dataset = DIV2K(args.data_dir, train=False, gray_scale=args.gray_scale)
@@ -83,17 +80,17 @@ if __name__ == "__main__":
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict(),
             'scheduler': scheduler.state_dict(),
-            'psnr': psnr / len(valid_loader),
-            'ssim': ssim / len(valid_loader)
+            'psnr': psnr,
+            'ssim': ssim
         }
         if psnr > best_psnr:
             best_psnr = psnr
             torch.save(saved_dict, best_model_path)
 
-        writer.add_scalar("Loss/train", train_loss / len(train_loader), epoch + 1)
-        writer.add_scalar("Loss/val", valid_loss / len(valid_loader), epoch + 1)
-        writer.add_scalar("PSNR/val", psnr / len(valid_loader), epoch + 1)
-        writer.add_scalar("SSIM/val", ssim / len(valid_loader), epoch + 1)
+        writer.add_scalar("Loss/train", train_loss, epoch + 1)
+        writer.add_scalar("Loss/val", valid_loss, epoch + 1)
+        writer.add_scalar("PSNR/val", psnr, epoch + 1)
+        writer.add_scalar("SSIM/val", ssim, epoch + 1)
         writer.add_scalar("Learning rate", optimizer.param_groups[0]['lr'], epoch + 1)
 
         torch.save(saved_dict, latest_model_path)

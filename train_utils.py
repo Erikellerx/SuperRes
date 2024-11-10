@@ -42,4 +42,4 @@ def validation(model, loader, criterion, device, epoch):
             ssim += SSIM(sr, hr)
                   
     tqdm.write(f"\nEpoch: {epoch} Validation Loss: {running_loss / len(loader)}, PSNR: {psnr / len(loader)}, SSIM: {ssim / len(loader)}\n")
-    return running_loss / len(loader), psnr, ssim
+    return running_loss / len(loader), psnr.item() / len(loader), ssim.item() / len(loader)

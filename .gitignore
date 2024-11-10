@@ -1,5 +1,6 @@
 datasets/DIV2K
 logs/*
+images/*
 
 
 # Ignore all __pycache__ directories
