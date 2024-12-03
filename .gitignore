@@ -1,5 +1,6 @@
 datasets/DIV2K
 logs/*
+images/*
 
 
 # Ignore all __pycache__ directories
@@ -11,4 +12,5 @@ __pycache__/
 *.pyd
 *.pth
 EDSR.ipynb
+playground.ipynb
 EDSR_test.ipynb
